@@ -27,6 +27,7 @@ function! s:init() abort
   command! BSMotionJumpEnter   call denops#request('bs-motion', 'enterJumpMode', [])
   command! BSMotionJumpLeave   call denops#request('bs-motion', 'leaveJumpMode', [])
   command! -nargs=1 BSMotionJumpMove call denops#request('bs-motion', 'jumpMove', [<f-args>])
+  highlight default BSMotionShade  ctermfg=grey ctermbg=NONE cterm=NONE guifg=#777777 guibg=NONE gui=NONE
   highlight default BSMotionCursor ctermbg=lightyellow guibg=lightyellow
 endfunction
 

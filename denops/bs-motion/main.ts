@@ -31,6 +31,9 @@ interface JumpState {
 
   // カーソル位置のハイライトの match ID（1文字分の位置を強調表示）
   cursorMatchId: number | null;
+
+  // 範囲外部分 (シェード) のハイライトの match ID を保持（複数あるため配列）
+  shadeMatchIds: number[];
 }
 
 const jumpState: JumpState = {
@@ -52,13 +55,14 @@ const jumpState: JumpState = {
   keyExitTransparent: [],
 
   cursorMatchId: null,
+  shadeMatchIds: [],
 };
 
 /**
  * 現在のカーソル位置のみをハイライトする
  */
 async function updateCursorHighlight(denops: Denops): Promise<void> {
-  // すでにハイライトが設定済みなら削除
+  // すでにカーソルハイライトが設定済みなら削除
   if (jumpState.cursorMatchId !== null) {
     await fn.matchdelete(denops, jumpState.cursorMatchId);
     jumpState.cursorMatchId = null;
@@ -70,7 +74,52 @@ async function updateCursorHighlight(denops: Denops): Promise<void> {
     [[jumpState.currentLine, jumpState.currentCol, 1]],
     10,
   );
-  // 画面再描画を行うことでハイライトが確実に反映されるようにする
+  await execute(denops, "redraw");
+}
+
+/**
+ * 対象範囲外 (ジャンプ対象エリア外) にシェードハイライトを適用する
+ */
+async function updateShadeHighlight(denops: Denops): Promise<void> {
+  // すでにシェードのハイライトが設定済みなら削除
+  for (const id of jumpState.shadeMatchIds) {
+    await fn.matchdelete(denops, id);
+  }
+  jumpState.shadeMatchIds = [];
+  // ウィンドウ全体の範囲を取得
+  const winTop = await fn.line(denops, "w0");
+  const winBottom = await fn.line(denops, "w$");
+  const winWidth = (await fn.winwidth(denops, 0)) || 1;
+
+  const highlights: [number, number, number][] = [];
+
+  // 上部シェード：ウィンドウ上端からジャンプ対象の上境界手前まで
+  for (let line = winTop; line < jumpState.topLine; line++) {
+    highlights.push([line, 1, winWidth]);
+  }
+  // 下部シェード：ジャンプ対象の下境界の次の行からウィンドウ下端まで
+  for (let line = jumpState.bottomLine + 1; line <= winBottom; line++) {
+    highlights.push([line, 1, winWidth]);
+  }
+  // 中央部分（左右）のシェード
+  // 左側シェード：ジャンプ対象内の行の、左側の余白
+  if (jumpState.leftCol > 1) {
+    for (let line = jumpState.topLine; line <= jumpState.bottomLine; line++) {
+      highlights.push([line, 1, jumpState.leftCol - 1]);
+    }
+  }
+  // 右側シェード：ジャンプ対象内の行の、右側の余白
+  if (jumpState.rightCol < winWidth) {
+    for (let line = jumpState.topLine; line <= jumpState.bottomLine; line++) {
+      highlights.push([line, jumpState.rightCol + 1, winWidth - jumpState.rightCol]);
+    }
+  }
+
+  // 各範囲に対してシェードのハイライトを登録
+  for (const pos of highlights) {
+    const id = await fn.matchaddpos(denops, "BSMotionShade", [pos], 10);
+    jumpState.shadeMatchIds.push(id);
+  }
   await execute(denops, "redraw");
 }
 
@@ -95,7 +144,8 @@ export const main: Entrypoint = (denops) => {
     /**
      * ジャンプモードに入る
      * ・ウィンドウの情報とユーザ設定のキーを取得
-     * ・カーソルの位置のみをハイライト
+     * ・カーソルの位置のみをハイライト（BSMotionCursor）
+     * ・対象範囲外は BSMotionShade でハイライト
      * ・以降、getChar() によって入力を待ち、該当するキーがあれば処理を行う
      */
     async enterJumpMode(): Promise<void> {
@@ -108,7 +158,7 @@ export const main: Entrypoint = (denops) => {
       jumpState.currentLine = await fn.line(denops, ".");
       jumpState.currentCol = await fn.col(denops, ".");
 
-      // ウィンドウの上端・下端行を取得
+      // ウィンドウの上端・下端行を取得（初期対象範囲）
       jumpState.topLine = await fn.line(denops, "w0");
       jumpState.bottomLine = await fn.line(denops, "w$");
 
@@ -126,12 +176,12 @@ export const main: Entrypoint = (denops) => {
 
       // 現在位置のみのハイライトを適用
       await updateCursorHighlight(denops);
+      // 対象範囲外にシェードハイライトを適用
+      await updateShadeHighlight(denops);
 
       // 入力ループ（ジャンプモードが有効な間、1文字ずつ受付）
       while (jumpState.jumpMode) {
-        // getchar で1文字分の入力を取得
         const charOrCode = await fn.getchar(denops);
-        // getchar は通常数値を返すので、文字コードから文字列に変換する
         let input = "";
         if (typeof charOrCode === "number") {
           input = String.fromCharCode(charOrCode);
@@ -140,7 +190,6 @@ export const main: Entrypoint = (denops) => {
         }
         const matched = getMatchedDirection(input, jumpState);
 
-        // 入力に応じて処理を分岐
         if (
           matched === "left" ||
           matched === "down" ||
@@ -165,10 +214,16 @@ export const main: Entrypoint = (denops) => {
       }
       jumpState.jumpMode = false;
 
+      // カーソルハイライト削除
       if (jumpState.cursorMatchId !== null) {
         await fn.matchdelete(denops, jumpState.cursorMatchId);
         jumpState.cursorMatchId = null;
       }
+      // シェードハイライト削除
+      for (const id of jumpState.shadeMatchIds) {
+        await fn.matchdelete(denops, id);
+      }
+      jumpState.shadeMatchIds = [];
 
       await fn.cursor(denops, jumpState.currentLine, jumpState.currentCol);
     },
@@ -234,7 +289,7 @@ export const main: Entrypoint = (denops) => {
           return;
       }
 
-      // 範囲外にならないように調整（縦方向はすでに行っているので横のみチェック）
+      // 範囲外にならないように調整（横方向）
       if (currentCol < leftCol) {
         currentCol = leftCol;
       } else if (currentCol > rightCol) {
@@ -248,7 +303,7 @@ export const main: Entrypoint = (denops) => {
       if (currentCol > lineLength) {
         currentCol = lineLength > 0 ? lineLength : 1;
       }
-      // 同様に縦方向の安全対策
+      // 縦方向の安全対策
       if (currentLine < topLine) {
         currentLine = topLine;
       } else if (currentLine > bottomLine) {
@@ -268,6 +323,8 @@ export const main: Entrypoint = (denops) => {
 
       // カーソル位置のハイライト更新
       await updateCursorHighlight(denops);
+      // 対象範囲外のシェードハイライト更新
+      await updateShadeHighlight(denops);
 
       // 範囲が1行/1列の場合は終了
       const lineRange = bottomLine - topLine;
