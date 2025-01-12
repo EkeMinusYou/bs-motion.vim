@@ -22,11 +22,11 @@ interface JumpState {
   currentCol: number;
 
   // ユーザが設定するキー
-  keyLeft: string;
-  keyDown: string;
-  keyUp: string;
-  keyRight: string;
-  keyExit: string;
+  keyLeft: string[];
+  keyDown: string[];
+  keyUp: string[];
+  keyRight: string[];
+  keyExit: string[];
 }
 
 const jumpState: JumpState = {
@@ -40,11 +40,11 @@ const jumpState: JumpState = {
   currentLine: 1,
   currentCol: 1,
 
-  keyLeft:  "",
-  keyDown:  "",
-  keyUp:    "",
-  keyRight: "",
-  keyExit:  "",
+  keyLeft:  [],
+  keyDown:  [],
+  keyUp:    [],
+  keyRight: [],
+  keyExit:  [],
 };
 
 export const main: Entrypoint = (denops) => {
@@ -65,39 +65,56 @@ export const main: Entrypoint = (denops) => {
       jumpState.currentCol = col;
 
       // -- 今見えているウィンドウの上端・下端行を取得
-      //    line('w0') : ウィンドウの最上行
-      //    line('w$') : ウィンドウの最下行
       const topWinLine = await fn.line(denops, "w0");
       const bottomWinLine = await fn.line(denops, "w$");
       jumpState.topLine = topWinLine;
       jumpState.bottomLine = bottomWinLine;
 
       // -- ウィンドウ幅 (カラム数) を取得
-      //    wrap の有無や実際の長い行の折り返しを厳密に考慮はしていません。
-      //    シンプルに「1列目 ～ winwidth(0)列目」の範囲内で左右にジャンプします。
       const winWidth = await fn.winwidth(denops, 0);
       jumpState.leftCol = 1;
       jumpState.rightCol = winWidth > 0 ? winWidth : 1;
 
-      // -- Vim script 側で設定されたキー (up/down/left/right/exit) を取得
-      jumpState.keyLeft  = (await denops.eval("g:bs_motion_key_left"))  as string;
-      jumpState.keyDown  = (await denops.eval("g:bs_motion_key_down"))  as string;
-      jumpState.keyUp    = (await denops.eval("g:bs_motion_key_up"))    as string;
-      jumpState.keyRight = (await denops.eval("g:bs_motion_key_right")) as string;
-      jumpState.keyExit  = (await denops.eval("g:bs_motion_key_exit"))  as string;
+      // -- Vim script 側で設定されたキー (配列/文字列) を取得し、必ず配列にする
+      //    例えば g:bs_motion_key_left が ['h', 'H'] の場合はそのまま
+      //    'h' (文字列) が来た場合は ['h'] に変換する
+      const toArray = (val: unknown): string[] => {
+        if (Array.isArray(val)) {
+          return val.map((v) => String(v));
+        } else if (typeof val === "string") {
+          return [val];
+        }
+        // 不正な値の場合のフォールバック
+        return [];
+      };
 
-      // -- バッファローカルマッピング (JumpMode 用)
-      await execute(
-        denops,
-        `
-          nnoremap <silent> <buffer> ${jumpState.keyLeft}  :call denops#request('bs-motion', 'jumpMove', ['left'])<CR>
-          nnoremap <silent> <buffer> ${jumpState.keyDown}  :call denops#request('bs-motion', 'jumpMove', ['down'])<CR>
-          nnoremap <silent> <buffer> ${jumpState.keyUp}    :call denops#request('bs-motion', 'jumpMove', ['up'])<CR>
-          nnoremap <silent> <buffer> ${jumpState.keyRight} :call denops#request('bs-motion', 'jumpMove', ['right'])<CR>
+      jumpState.keyLeft  = toArray(await denops.eval("g:bs_motion_key_left"));
+      jumpState.keyDown  = toArray(await denops.eval("g:bs_motion_key_down"));
+      jumpState.keyUp    = toArray(await denops.eval("g:bs_motion_key_up"));
+      jumpState.keyRight = toArray(await denops.eval("g:bs_motion_key_right"));
+      jumpState.keyExit  = toArray(await denops.eval("g:bs_motion_key_exit"));
 
-          nnoremap <silent> <buffer> ${jumpState.keyExit} :call denops#request('bs-motion', 'leaveJumpMode', [])<CR>
-        `,
-      );
+      // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
+      //    同じ操作を複数キーで呼び出せるようにする
+      let commands: string[] = [];
+      for (const key of jumpState.keyLeft) {
+        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['left'])<CR>`);
+      }
+      for (const key of jumpState.keyDown) {
+        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['down'])<CR>`);
+      }
+      for (const key of jumpState.keyUp) {
+        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['up'])<CR>`);
+      }
+      for (const key of jumpState.keyRight) {
+        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['right'])<CR>`);
+      }
+      for (const key of jumpState.keyExit) {
+        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpMode', [])<CR>`);
+      }
+
+      // コマンドを一括実行
+      await execute(denops, commands.join("\n"));
     },
 
     /**
@@ -109,23 +126,30 @@ export const main: Entrypoint = (denops) => {
       }
       jumpState.jumpMode = false;
 
+      // nnoremap で設定したものを nunmap で全解除
       await batch(denops, async (denops) => {
-        await execute(
-          denops,
-          [
-            `nunmap <buffer> ${jumpState.keyLeft}`,
-            `nunmap <buffer> ${jumpState.keyDown}`,
-            `nunmap <buffer> ${jumpState.keyUp}`,
-            `nunmap <buffer> ${jumpState.keyRight}`,
-            `nunmap <buffer> ${jumpState.keyExit}`,
-          ].join("\n"),
-        );
+        let commands: string[] = [];
+        for (const key of jumpState.keyLeft) {
+          commands.push(`nunmap <buffer> ${key}`);
+        }
+        for (const key of jumpState.keyDown) {
+          commands.push(`nunmap <buffer> ${key}`);
+        }
+        for (const key of jumpState.keyUp) {
+          commands.push(`nunmap <buffer> ${key}`);
+        }
+        for (const key of jumpState.keyRight) {
+          commands.push(`nunmap <buffer> ${key}`);
+        }
+        for (const key of jumpState.keyExit) {
+          commands.push(`nunmap <buffer> ${key}`);
+        }
+        await execute(denops, commands.join("\n"));
       });
     },
 
     /**
      * ジャンプコマンド (up/down/left/right)
-     *
      * ウィンドウの上端行～下端行、左端列～右端列の「範囲内」で
      * 現在位置から半分移動していく。
      */
@@ -150,7 +174,7 @@ export const main: Entrypoint = (denops) => {
         case "up": {
           // ウィンドウの上端行 (topLine) ～ 現在行 の中間へ移動
           const newLine = Math.floor((topLine + currentLine) / 2);
-          // 下端を旧位置に更新することで「バイナリサーチ」的に範囲を狭める
+          // 下端を旧位置に更新
           bottomLine = currentLine;
           currentLine = newLine;
           break;
