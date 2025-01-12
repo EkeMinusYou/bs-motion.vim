@@ -14,7 +14,7 @@ if !exists('g:bs_motion_key_exit')
   let g:bs_motion_key_exit = ['q', '<Esc>']
 endif
 if !exists('g:bs_motion_key_exit_transparent')
-  let g:bs_motion_key_exit_transparent = ['w', 'b', 'e']
+  let g:bs_motion_key_exit_transparent = ['w', 'b', 'e', 'a', 'i']
 endif
 
 if exists('g:loaded_bs_motion')
