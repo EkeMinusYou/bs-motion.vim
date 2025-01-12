@@ -162,9 +162,12 @@ export const main: Entrypoint = (denops) => {
       )) as string[];
 
       // ハイライトグループの設定（例：背景色を lightyellow にする）
-      await execute(denops, `
+      await execute(
+        denops,
+        `
         highlight BsMotionCursor ctermbg=lightyellow guibg=lightyellow
-      `);
+      `,
+      );
       // 現在位置のみのハイライトを適用
       await updateCursorHighlight(denops);
 
@@ -284,7 +287,7 @@ export const main: Entrypoint = (denops) => {
       // 現在行の行末より大きくなっていないかチェック
       const lineLength = await fn.strwidth(
         denops,
-        await fn.getline(denops, currentLine)
+        await fn.getline(denops, currentLine),
       );
       if (currentCol > lineLength) {
         currentCol = lineLength > 0 ? lineLength : 1;
