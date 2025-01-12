@@ -2,6 +2,7 @@ import type { Entrypoint } from "jsr:@denops/std@^7.0.0";
 import { execute } from "jsr:@denops/std@^7.0.0/helper/execute";
 import { batch } from "jsr:@denops/std@^7.0.0/batch";
 import * as fn from "jsr:@denops/std@^7.0.0/function";
+import * as vars from "jsr:@denops/std/variable";
 
 /**
  * ジャンプ時の上下左右の境界や現在位置、マッピングキーを管理
@@ -71,24 +72,10 @@ export const main: Entrypoint = (denops) => {
       jumpState.leftCol = 1;
       jumpState.rightCol = winWidth > 0 ? winWidth : 1;
 
-      // -- Vim script 側で設定されたキー (配列/文字列) を取得し、必ず配列にする
-      //    例えば g:bs_motion_key_left が ['h', 'H'] の場合はそのまま
-      //    'h' (文字列) が来た場合は ['h'] に変換する
-      const toArray = (val: unknown): string[] => {
-        if (Array.isArray(val)) {
-          return val.map((v) => String(v));
-        } else if (typeof val === "string") {
-          return [val];
-        }
-        // 不正な値の場合のフォールバック
-        return [];
-      };
-
-      jumpState.keyLeft = toArray(await denops.eval("g:bs_motion_key_left"));
-      jumpState.keyDown = toArray(await denops.eval("g:bs_motion_key_down"));
-      jumpState.keyUp = toArray(await denops.eval("g:bs_motion_key_up"));
-      jumpState.keyRight = toArray(await denops.eval("g:bs_motion_key_right"));
-      jumpState.keyExit = toArray(await denops.eval("g:bs_motion_key_exit"));
+      jumpState.keyLeft = await vars.globals.get(denops, "bs_motion_key_left", []) as string[];
+      jumpState.keyDown = await vars.globals.get(denops, "bs_motion_key_down", []) as string[];
+      jumpState.keyUp = await vars.globals.get(denops, "bs_motion_key_up", []) as string[];
+      jumpState.keyRight = await vars.globals.get(denops, "bs_motion_key_right", []) as string[];
 
       // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
       //    同じ操作を複数キーで呼び出せるようにする

@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@core/unknownutil@^4.3.0": "4.3.0",
     "jsr:@denops/core@7": "7.0.1",
+    "jsr:@denops/std@*": "7.4.0",
     "jsr:@denops/std@7": "7.4.0",
     "jsr:@lambdalisue/itertools@^1.1.2": "1.1.2",
     "jsr:@lambdalisue/unreachable@^1.0.1": "1.0.1",
