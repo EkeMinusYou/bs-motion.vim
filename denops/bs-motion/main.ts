@@ -7,15 +7,15 @@ import * as fn from "jsr:@denops/std@^7.0.0/function";
  * ジャンプ時の上下左右の境界や現在位置、マッピングキーを管理
  */
 interface JumpState {
-  jumpMode: boolean;    // ジャンプモード中かどうか
+  jumpMode: boolean; // ジャンプモード中かどうか
 
   // ジャンプ対象とするウィンドウ範囲 (行)
-  topLine: number;      // 「上」方向の境界行番号 (w0)
-  bottomLine: number;   // 「下」方向の境界行番号 (w$)
+  topLine: number; // 「上」方向の境界行番号 (w0)
+  bottomLine: number; // 「下」方向の境界行番号 (w$)
 
   // ジャンプ対象とするウィンドウ範囲 (列)
-  leftCol: number;      // 「左」方向の境界列 (今回は 1 固定とする)
-  rightCol: number;     // 「右」方向の境界列 (winwidth(0) など)
+  leftCol: number; // 「左」方向の境界列 (今回は 1 固定とする)
+  rightCol: number; // 「右」方向の境界列 (winwidth(0) など)
 
   // 現在位置 (ジャンプ後のカーソル行/列)
   currentLine: number;
@@ -40,11 +40,11 @@ const jumpState: JumpState = {
   currentLine: 1,
   currentCol: 1,
 
-  keyLeft:  [],
-  keyDown:  [],
-  keyUp:    [],
+  keyLeft: [],
+  keyDown: [],
+  keyUp: [],
   keyRight: [],
-  keyExit:  [],
+  keyExit: [],
 };
 
 export const main: Entrypoint = (denops) => {
@@ -88,29 +88,39 @@ export const main: Entrypoint = (denops) => {
         return [];
       };
 
-      jumpState.keyLeft  = toArray(await denops.eval("g:bs_motion_key_left"));
-      jumpState.keyDown  = toArray(await denops.eval("g:bs_motion_key_down"));
-      jumpState.keyUp    = toArray(await denops.eval("g:bs_motion_key_up"));
+      jumpState.keyLeft = toArray(await denops.eval("g:bs_motion_key_left"));
+      jumpState.keyDown = toArray(await denops.eval("g:bs_motion_key_down"));
+      jumpState.keyUp = toArray(await denops.eval("g:bs_motion_key_up"));
       jumpState.keyRight = toArray(await denops.eval("g:bs_motion_key_right"));
-      jumpState.keyExit  = toArray(await denops.eval("g:bs_motion_key_exit"));
+      jumpState.keyExit = toArray(await denops.eval("g:bs_motion_key_exit"));
 
       // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
       //    同じ操作を複数キーで呼び出せるようにする
       let commands: string[] = [];
       for (const key of jumpState.keyLeft) {
-        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['left'])<CR>`);
+        commands.push(
+          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['left'])<CR>`,
+        );
       }
       for (const key of jumpState.keyDown) {
-        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['down'])<CR>`);
+        commands.push(
+          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['down'])<CR>`,
+        );
       }
       for (const key of jumpState.keyUp) {
-        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['up'])<CR>`);
+        commands.push(
+          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['up'])<CR>`,
+        );
       }
       for (const key of jumpState.keyRight) {
-        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['right'])<CR>`);
+        commands.push(
+          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['right'])<CR>`,
+        );
       }
       for (const key of jumpState.keyExit) {
-        commands.push(`nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpMode', [])<CR>`);
+        commands.push(
+          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpMode', [])<CR>`,
+        );
       }
 
       // コマンドを一括実行
@@ -231,6 +241,13 @@ export const main: Entrypoint = (denops) => {
       jumpState.bottomLine = bottomLine;
       jumpState.leftCol = leftCol;
       jumpState.rightCol = rightCol;
+
+      // 1行/1列の範囲になったらジャンプモードを抜ける
+      const lineRange = bottomLine - topLine;
+      const colRange = rightCol - leftCol;
+      if (lineRange <= 1 || colRange <= 1) {
+        await this.leaveJumpMode();
+      }
     },
   };
 };
