@@ -66,7 +66,7 @@ async function updateCursorHighlight(denops: Denops): Promise<void> {
   // 現在位置の1文字をハイライトする
   jumpState.cursorMatchId = await fn.matchaddpos(
     denops,
-    "BsMotionCursor",
+    "BSMotionCursor",
     [[jumpState.currentLine, jumpState.currentCol, 1]],
     10,
   );
@@ -124,13 +124,6 @@ export const main: Entrypoint = (denops) => {
       jumpState.keyExit = (await vars.globals.get(denops, "bs_motion_key_exit", [])) as string[];
       jumpState.keyExitTransparent = (await vars.globals.get(denops, "bs_motion_key_exit_transparent", [])) as string[];
 
-      // ハイライトグループの設定（例：背景色を lightyellow にする）
-      await execute(
-        denops,
-        `
-        highlight BsMotionCursor ctermbg=lightyellow guibg=lightyellow
-      `,
-      );
       // 現在位置のみのハイライトを適用
       await updateCursorHighlight(denops);
 
