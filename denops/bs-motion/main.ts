@@ -8,26 +8,35 @@ import * as fn from "jsr:@denops/std@^7.0.0/function";
  */
 interface JumpState {
   jumpMode: boolean;    // ジャンプモード中かどうか
-  topLine: number;      // 「上」方向の境界行番号
-  bottomLine: number;   // 「下」方向の境界行番号
-  leftCol: number;      // 「左」方向の境界列
-  rightCol: number;     // 「右」方向の境界列
-  currentLine: number;  // 前回の移動後の行
-  currentCol: number;   // 前回の移動後の列
 
+  // ジャンプ対象とするウィンドウ範囲 (行)
+  topLine: number;      // 「上」方向の境界行番号 (w0)
+  bottomLine: number;   // 「下」方向の境界行番号 (w$)
+
+  // ジャンプ対象とするウィンドウ範囲 (列)
+  leftCol: number;      // 「左」方向の境界列 (今回は 1 固定とする)
+  rightCol: number;     // 「右」方向の境界列 (winwidth(0) など)
+
+  // 現在位置 (ジャンプ後のカーソル行/列)
+  currentLine: number;
+  currentCol: number;
+
+  // ユーザが設定するキー
   keyLeft: string;
   keyDown: string;
   keyUp: string;
   keyRight: string;
-  keyExit: string;      // JumpMode を抜けるキー
+  keyExit: string;
 }
 
 const jumpState: JumpState = {
   jumpMode: false,
+
   topLine: 1,
   bottomLine: 1,
   leftCol: 1,
   rightCol: 1,
+
   currentLine: 1,
   currentCol: 1,
 
@@ -41,38 +50,43 @@ const jumpState: JumpState = {
 export const main: Entrypoint = (denops) => {
   denops.dispatcher = {
     /**
-     * ジャンプモードに入る
+     * ジャンプモードに入る (ウィンドウの範囲を取得する)
      */
     async enterJumpMode(): Promise<void> {
       if (jumpState.jumpMode) {
-        return; // すでにモード中なら何もしない
+        return;
       }
       jumpState.jumpMode = true;
 
-      // 現在カーソル位置を取得
+      // 現在のカーソル位置
       const lnum = await fn.line(denops, ".");
       const col = await fn.col(denops, ".");
       jumpState.currentLine = lnum;
       jumpState.currentCol = col;
 
-      // バッファ全体の最終行
-      const lastLine = await fn.line(denops, "$");
-      jumpState.topLine = 1;
-      jumpState.bottomLine = lastLine;
+      // -- 今見えているウィンドウの上端・下端行を取得
+      //    line('w0') : ウィンドウの最上行
+      //    line('w$') : ウィンドウの最下行
+      const topWinLine = await fn.line(denops, "w0");
+      const bottomWinLine = await fn.line(denops, "w$");
+      jumpState.topLine = topWinLine;
+      jumpState.bottomLine = bottomWinLine;
 
-      // 現在行の文字数
-      const lineText = await fn.getline(denops, lnum) ?? "";
+      // -- ウィンドウ幅 (カラム数) を取得
+      //    wrap の有無や実際の長い行の折り返しを厳密に考慮はしていません。
+      //    シンプルに「1列目 ～ winwidth(0)列目」の範囲内で左右にジャンプします。
+      const winWidth = await fn.winwidth(denops, 0);
       jumpState.leftCol = 1;
-      jumpState.rightCol = lineText.length === 0 ? 1 : lineText.length;
+      jumpState.rightCol = winWidth > 0 ? winWidth : 1;
 
-      // Vim script 側で設定されたキーを取得
+      // -- Vim script 側で設定されたキー (up/down/left/right/exit) を取得
       jumpState.keyLeft  = (await denops.eval("g:bs_motion_key_left"))  as string;
       jumpState.keyDown  = (await denops.eval("g:bs_motion_key_down"))  as string;
       jumpState.keyUp    = (await denops.eval("g:bs_motion_key_up"))    as string;
       jumpState.keyRight = (await denops.eval("g:bs_motion_key_right")) as string;
       jumpState.keyExit  = (await denops.eval("g:bs_motion_key_exit"))  as string;
 
-      // JumpMode 用のバッファローカルマッピングを設定
+      // -- バッファローカルマッピング (JumpMode 用)
       await execute(
         denops,
         `
@@ -87,7 +101,7 @@ export const main: Entrypoint = (denops) => {
     },
 
     /**
-     * ジャンプモードを抜ける
+     * ジャンプモードを抜ける (ローカルマッピングを解除)
      */
     async leaveJumpMode(): Promise<void> {
       if (!jumpState.jumpMode) {
@@ -95,7 +109,6 @@ export const main: Entrypoint = (denops) => {
       }
       jumpState.jumpMode = false;
 
-      // JumpMode 用に設定したローカルマッピングを解除
       await batch(denops, async (denops) => {
         await execute(
           denops,
@@ -111,8 +124,10 @@ export const main: Entrypoint = (denops) => {
     },
 
     /**
-     * 移動コマンド
-     * direction: 'up' | 'down' | 'left' | 'right'
+     * ジャンプコマンド (up/down/left/right)
+     *
+     * ウィンドウの上端行～下端行、左端列～右端列の「範囲内」で
+     * 現在位置から半分移動していく。
      */
     async jumpMove(direction: unknown): Promise<void> {
       if (typeof direction !== "string") {
@@ -133,41 +148,59 @@ export const main: Entrypoint = (denops) => {
 
       switch (direction) {
         case "up": {
+          // ウィンドウの上端行 (topLine) ～ 現在行 の中間へ移動
           const newLine = Math.floor((topLine + currentLine) / 2);
+          // 下端を旧位置に更新することで「バイナリサーチ」的に範囲を狭める
           bottomLine = currentLine;
           currentLine = newLine;
-          const lineText = await fn.getline(denops, currentLine) ?? "";
-          leftCol = 1;
-          rightCol = lineText.length === 0 ? 1 : lineText.length;
-          currentCol = Math.min(currentCol, rightCol);
           break;
         }
         case "down": {
+          // ウィンドウの下端行 (bottomLine) ～ 現在行 の中間へ移動
           const newLine = Math.floor((bottomLine + currentLine) / 2);
+          // 上端を旧位置に更新
           topLine = currentLine;
           currentLine = newLine;
-          const lineText = await fn.getline(denops, currentLine) ?? "";
-          leftCol = 1;
-          rightCol = lineText.length === 0 ? 1 : lineText.length;
-          currentCol = Math.min(currentCol, rightCol);
           break;
         }
         case "left": {
+          // ウィンドウの左端列 (leftCol) ～ 現在列 の中間へ移動
           const newCol = Math.floor((leftCol + currentCol) / 2);
+          // 右端を旧位置に更新
           rightCol = currentCol;
           currentCol = newCol;
           break;
         }
         case "right": {
+          // ウィンドウの右端列 (rightCol) ～ 現在列 の中間へ移動
           const newCol = Math.floor((rightCol + currentCol) / 2);
+          // 左端を旧位置に更新
           leftCol = currentCol;
           currentCol = newCol;
           break;
         }
+        default: {
+          // それ以外は無視
+          return;
+        }
       }
 
+      // 範囲外に出そうになった場合の安全策
+      if (currentLine < topLine) {
+        currentLine = topLine;
+      } else if (currentLine > bottomLine) {
+        currentLine = bottomLine;
+      }
+      if (currentCol < leftCol) {
+        currentCol = leftCol;
+      } else if (currentCol > rightCol) {
+        currentCol = rightCol;
+      }
+
+      // カーソルを移動
       await fn.cursor(denops, currentLine, currentCol);
 
+      // 状態を更新
       jumpState.currentLine = currentLine;
       jumpState.currentCol = currentCol;
       jumpState.topLine = topLine;
