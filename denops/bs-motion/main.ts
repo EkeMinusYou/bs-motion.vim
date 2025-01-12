@@ -28,6 +28,7 @@ interface JumpState {
   keyUp: string[];
   keyRight: string[];
   keyExit: string[];
+  keyExitTransparent: string[];
 }
 
 const jumpState: JumpState = {
@@ -46,6 +47,7 @@ const jumpState: JumpState = {
   keyUp: [],
   keyRight: [],
   keyExit: [],
+  keyExitTransparent: [],
 };
 
 export const main: Entrypoint = (denops) => {
@@ -92,6 +94,16 @@ export const main: Entrypoint = (denops) => {
         "bs_motion_key_right",
         [],
       ) as string[];
+      jumpState.keyExit = await vars.globals.get(
+        denops,
+        "bs_motion_key_exit",
+        [],
+      ) as string[];
+      jumpState.keyExitTransparent = await vars.globals.get(
+        denops,
+        "bs_motion_key_exit_transparent",
+        [],
+      ) as string[];
 
       // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
       //    同じ操作を複数キーで呼び出せるようにする
@@ -119,6 +131,11 @@ export const main: Entrypoint = (denops) => {
       for (const key of jumpState.keyExit) {
         commands.push(
           `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpMode', [])<CR>`,
+        );
+      }
+      for (const key of jumpState.keyExitTransparent) {
+        commands.push(
+          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpModeTransparent', ['${key}'])<CR>`,
         );
       }
 
@@ -155,6 +172,16 @@ export const main: Entrypoint = (denops) => {
         }
         await execute(denops, commands.join("\n"));
       });
+    },
+
+    async leaveJumpModeTransparent(key: unknown): Promise<void> {
+      if (typeof key !== "string") {
+        return;
+      }
+      // ジャンプモードを抜ける
+      await this.leaveJumpMode();
+      // 押されたキーを透過的に実行
+      await fn.execute(denops, `normal! ${key}`);
     },
 
     /**
