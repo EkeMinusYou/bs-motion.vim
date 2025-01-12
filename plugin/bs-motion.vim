@@ -1,3 +1,19 @@
+if !exists('g:bs_motion_key_left')
+  let g:bs_motion_key_left = 'h'
+endif
+if !exists('g:bs_motion_key_down')
+  let g:bs_motion_key_down = 'j'
+endif
+if !exists('g:bs_motion_key_up')
+  let g:bs_motion_key_up = 'k'
+endif
+if !exists('g:bs_motion_key_right')
+  let g:bs_motion_key_right = 'l'
+endif
+if !exists('g:bs_motion_key_exit')
+  let g:bs_motion_key_exit = '<esc>'
+endif
+
 if exists('g:loaded_bs_motion')
   finish
 endif
