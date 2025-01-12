@@ -188,14 +188,12 @@ export const main: Entrypoint = (denops) => {
           matched === "up" ||
           matched === "right"
         ) {
-          // timer_start を使わず、直接呼び出す
           await denops.dispatcher.jumpMove(matched);
         } else if (matched === "exit") {
           await denops.dispatcher.leaveJumpMode();
         } else if (matched === "exitTransparent") {
           await denops.dispatcher.leaveJumpModeTransparent(input);
         }
-        // 該当しないキーの場合は無視し、再度入力待ち
       }
     },
 
@@ -208,13 +206,11 @@ export const main: Entrypoint = (denops) => {
       }
       jumpState.jumpMode = false;
 
-      // ハイライト解除（cursorMatchId があれば）
       if (jumpState.cursorMatchId !== null) {
         await fn.matchdelete(denops, jumpState.cursorMatchId);
         jumpState.cursorMatchId = null;
       }
 
-      // 最終的なジャンプ位置にカーソルを移動
       await fn.cursor(denops, jumpState.currentLine, jumpState.currentCol);
     },
 
@@ -279,16 +275,25 @@ export const main: Entrypoint = (denops) => {
           return;
       }
 
-      // 範囲外にならないように調整
-      if (currentLine < topLine) {
-        currentLine = topLine;
-      } else if (currentLine > bottomLine) {
-        currentLine = bottomLine;
-      }
+      // 範囲外にならないように調整（縦方向はすでに行っているので横のみチェック）
       if (currentCol < leftCol) {
         currentCol = leftCol;
       } else if (currentCol > rightCol) {
         currentCol = rightCol;
+      }
+      // 現在行の行末より大きくなっていないかチェック
+      const lineLength = await fn.strwidth(
+        denops,
+        await fn.getline(denops, currentLine)
+      );
+      if (currentCol > lineLength) {
+        currentCol = lineLength > 0 ? lineLength : 1;
+      }
+      // 同様に縦方向の安全対策
+      if (currentLine < topLine) {
+        currentLine = topLine;
+      } else if (currentLine > bottomLine) {
+        currentLine = bottomLine;
       }
 
       // カーソルを移動
