@@ -81,24 +81,12 @@ function getMatchedDirection(
   input: string,
   state: JumpState,
 ): "left" | "down" | "up" | "right" | "exit" | "exitTransparent" | null {
-  if (state.keyLeft.some((k) => k.charAt(0) === input)) {
-    return "left";
-  }
-  if (state.keyDown.some((k) => k.charAt(0) === input)) {
-    return "down";
-  }
-  if (state.keyUp.some((k) => k.charAt(0) === input)) {
-    return "up";
-  }
-  if (state.keyRight.some((k) => k.charAt(0) === input)) {
-    return "right";
-  }
-  if (state.keyExit.some((k) => k.charAt(0) === input)) {
-    return "exit";
-  }
-  if (state.keyExitTransparent.some((k) => k.charAt(0) === input)) {
-    return "exitTransparent";
-  }
+  if (state.keyLeft.some((k) => k.charAt(0) === input)) return "left";
+  if (state.keyDown.some((k) => k.charAt(0) === input)) return "down";
+  if (state.keyUp.some((k) => k.charAt(0) === input)) return "up";
+  if (state.keyRight.some((k) => k.charAt(0) === input)) return "right";
+  if (state.keyExit.some((k) => k.charAt(0) === input)) return "exit";
+  if (state.keyExitTransparent.some((k) => k.charAt(0) === input)) return "exitTransparent";
   return null;
 }
 
@@ -130,36 +118,12 @@ export const main: Entrypoint = (denops) => {
       jumpState.rightCol = winWidth > 0 ? winWidth : 1;
 
       // ユーザ設定のキー取得
-      jumpState.keyLeft = (await vars.globals.get(
-        denops,
-        "bs_motion_key_left",
-        [],
-      )) as string[];
-      jumpState.keyDown = (await vars.globals.get(
-        denops,
-        "bs_motion_key_down",
-        [],
-      )) as string[];
-      jumpState.keyUp = (await vars.globals.get(
-        denops,
-        "bs_motion_key_up",
-        [],
-      )) as string[];
-      jumpState.keyRight = (await vars.globals.get(
-        denops,
-        "bs_motion_key_right",
-        [],
-      )) as string[];
-      jumpState.keyExit = (await vars.globals.get(
-        denops,
-        "bs_motion_key_exit",
-        [],
-      )) as string[];
-      jumpState.keyExitTransparent = (await vars.globals.get(
-        denops,
-        "bs_motion_key_exit_transparent",
-        [],
-      )) as string[];
+      jumpState.keyLeft = (await vars.globals.get(denops, "bs_motion_key_left", [])) as string[];
+      jumpState.keyDown = (await vars.globals.get(denops, "bs_motion_key_down", [])) as string[];
+      jumpState.keyUp = (await vars.globals.get(denops, "bs_motion_key_up", [])) as string[];
+      jumpState.keyRight = (await vars.globals.get(denops, "bs_motion_key_right", [])) as string[];
+      jumpState.keyExit = (await vars.globals.get(denops, "bs_motion_key_exit", [])) as string[];
+      jumpState.keyExitTransparent = (await vars.globals.get(denops, "bs_motion_key_exit_transparent", [])) as string[];
 
       // ハイライトグループの設定（例：背景色を lightyellow にする）
       await execute(
