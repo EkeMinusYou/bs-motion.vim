@@ -60,7 +60,7 @@ export const main: Entrypoint = (denops) => {
       jumpState.jumpMode = true;
 
       // 現在のカーソル位置
-      jumpState.currentLine =await fn.line(denops, ".");
+      jumpState.currentLine = await fn.line(denops, ".");
       jumpState.currentCol = await fn.col(denops, ".");
 
       // -- 今見えているウィンドウの上端・下端行を取得
@@ -72,10 +72,26 @@ export const main: Entrypoint = (denops) => {
       jumpState.leftCol = 1;
       jumpState.rightCol = winWidth > 0 ? winWidth : 1;
 
-      jumpState.keyLeft = await vars.globals.get(denops, "bs_motion_key_left", []) as string[];
-      jumpState.keyDown = await vars.globals.get(denops, "bs_motion_key_down", []) as string[];
-      jumpState.keyUp = await vars.globals.get(denops, "bs_motion_key_up", []) as string[];
-      jumpState.keyRight = await vars.globals.get(denops, "bs_motion_key_right", []) as string[];
+      jumpState.keyLeft = await vars.globals.get(
+        denops,
+        "bs_motion_key_left",
+        [],
+      ) as string[];
+      jumpState.keyDown = await vars.globals.get(
+        denops,
+        "bs_motion_key_down",
+        [],
+      ) as string[];
+      jumpState.keyUp = await vars.globals.get(
+        denops,
+        "bs_motion_key_up",
+        [],
+      ) as string[];
+      jumpState.keyRight = await vars.globals.get(
+        denops,
+        "bs_motion_key_right",
+        [],
+      ) as string[];
 
       // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
       //    同じ操作を複数キーで呼び出せるようにする
