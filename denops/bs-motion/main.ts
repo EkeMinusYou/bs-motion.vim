@@ -59,16 +59,12 @@ export const main: Entrypoint = (denops) => {
       jumpState.jumpMode = true;
 
       // 現在のカーソル位置
-      const lnum = await fn.line(denops, ".");
-      const col = await fn.col(denops, ".");
-      jumpState.currentLine = lnum;
-      jumpState.currentCol = col;
+      jumpState.currentLine =await fn.line(denops, ".");
+      jumpState.currentCol = await fn.col(denops, ".");
 
       // -- 今見えているウィンドウの上端・下端行を取得
-      const topWinLine = await fn.line(denops, "w0");
-      const bottomWinLine = await fn.line(denops, "w$");
-      jumpState.topLine = topWinLine;
-      jumpState.bottomLine = bottomWinLine;
+      jumpState.topLine = await fn.line(denops, "w0");
+      jumpState.bottomLine = await fn.line(denops, "w$");
 
       // -- ウィンドウ幅 (カラム数) を取得
       const winWidth = await fn.winwidth(denops, 0);
@@ -96,7 +92,7 @@ export const main: Entrypoint = (denops) => {
 
       // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
       //    同じ操作を複数キーで呼び出せるようにする
-      let commands: string[] = [];
+      const commands: string[] = [];
       for (const key of jumpState.keyLeft) {
         commands.push(
           `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['left'])<CR>`,
@@ -138,7 +134,7 @@ export const main: Entrypoint = (denops) => {
 
       // nnoremap で設定したものを nunmap で全解除
       await batch(denops, async (denops) => {
-        let commands: string[] = [];
+        const commands: string[] = [];
         for (const key of jumpState.keyLeft) {
           commands.push(`nunmap <buffer> ${key}`);
         }
