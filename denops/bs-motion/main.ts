@@ -1,11 +1,10 @@
-import type { Entrypoint } from "jsr:@denops/std@^7.0.0";
+import type { Denops, Entrypoint } from "jsr:@denops/std@^7.0.0";
 import { execute } from "jsr:@denops/std@^7.0.0/helper/execute";
-import { batch } from "jsr:@denops/std@^7.0.0/batch";
 import * as fn from "jsr:@denops/std@^7.0.0/function";
 import * as vars from "jsr:@denops/std@^7.0.0/variable";
 
 /**
- * ジャンプ時の上下左右の境界や現在位置、マッピングキーを管理
+ * ジャンプ時の上下左右の境界や現在位置、ユーザ設定キー、ハイライト用IDを管理
  */
 interface JumpState {
   jumpMode: boolean; // ジャンプモード中かどうか
@@ -15,20 +14,23 @@ interface JumpState {
   bottomLine: number; // 「下」方向の境界行番号 (w$)
 
   // ジャンプ対象とするウィンドウ範囲 (列)
-  leftCol: number; // 「左」方向の境界列 (今回は 1 固定とする)
+  leftCol: number; // 「左」方向の境界列 (今回は 1 固定)
   rightCol: number; // 「右」方向の境界列 (winwidth(0) など)
 
   // 現在位置 (ジャンプ後のカーソル行/列)
   currentLine: number;
   currentCol: number;
 
-  // ユーザが設定するキー
+  // ユーザが設定するキー（各キー群は、複数文字指定も可能）
   keyLeft: string[];
   keyDown: string[];
   keyUp: string[];
   keyRight: string[];
   keyExit: string[];
   keyExitTransparent: string[];
+
+  // カーソル位置のハイライトの match ID（1文字分の位置を強調表示）
+  cursorMatchId: number | null;
 }
 
 const jumpState: JumpState = {
@@ -48,12 +50,65 @@ const jumpState: JumpState = {
   keyRight: [],
   keyExit: [],
   keyExitTransparent: [],
+
+  cursorMatchId: null,
 };
+
+/**
+ * 現在のカーソル位置のみをハイライトする
+ */
+async function updateCursorHighlight(denops: Denops): Promise<void> {
+  // すでにハイライトが設定済みなら削除
+  if (jumpState.cursorMatchId !== null) {
+    await fn.matchdelete(denops, jumpState.cursorMatchId);
+    jumpState.cursorMatchId = null;
+  }
+  // 現在位置の1文字をハイライトする
+  jumpState.cursorMatchId = await fn.matchaddpos(
+    denops,
+    "BsMotionCursor",
+    [[jumpState.currentLine, jumpState.currentCol, 1]],
+    10,
+  );
+  // 画面再描画を行うことでハイライトが確実に反映されるようにする
+  await execute(denops, "redraw");
+}
+
+/**
+ * ユーザから getchar() による入力を受け取り、どのキーに該当するかを判定する
+ */
+function getMatchedDirection(
+  input: string,
+  state: JumpState,
+): "left" | "down" | "up" | "right" | "exit" | "exitTransparent" | null {
+  if (state.keyLeft.some((k) => k.charAt(0) === input)) {
+    return "left";
+  }
+  if (state.keyDown.some((k) => k.charAt(0) === input)) {
+    return "down";
+  }
+  if (state.keyUp.some((k) => k.charAt(0) === input)) {
+    return "up";
+  }
+  if (state.keyRight.some((k) => k.charAt(0) === input)) {
+    return "right";
+  }
+  if (state.keyExit.some((k) => k.charAt(0) === input)) {
+    return "exit";
+  }
+  if (state.keyExitTransparent.some((k) => k.charAt(0) === input)) {
+    return "exitTransparent";
+  }
+  return null;
+}
 
 export const main: Entrypoint = (denops) => {
   denops.dispatcher = {
     /**
-     * ジャンプモードに入る (ウィンドウの範囲を取得する)
+     * ジャンプモードに入る
+     * ・ウィンドウの情報とユーザ設定のキーを取得
+     * ・カーソルの位置のみをハイライト
+     * ・以降、getChar() によって入力を待ち、該当するキーがあれば処理を行う
      */
     async enterJumpMode(): Promise<void> {
       if (jumpState.jumpMode) {
@@ -61,90 +116,91 @@ export const main: Entrypoint = (denops) => {
       }
       jumpState.jumpMode = true;
 
-      // 現在のカーソル位置
+      // 現在のカーソル位置を取得
       jumpState.currentLine = await fn.line(denops, ".");
       jumpState.currentCol = await fn.col(denops, ".");
 
-      // -- 今見えているウィンドウの上端・下端行を取得
+      // ウィンドウの上端・下端行を取得
       jumpState.topLine = await fn.line(denops, "w0");
       jumpState.bottomLine = await fn.line(denops, "w$");
 
-      // -- ウィンドウ幅 (カラム数) を取得
+      // ウィンドウ幅 (カラム数) を取得
       const winWidth = await fn.winwidth(denops, 0);
       jumpState.leftCol = 1;
       jumpState.rightCol = winWidth > 0 ? winWidth : 1;
 
-      jumpState.keyLeft = await vars.globals.get(
+      // ユーザ設定のキー取得
+      jumpState.keyLeft = (await vars.globals.get(
         denops,
         "bs_motion_key_left",
         [],
-      ) as string[];
-      jumpState.keyDown = await vars.globals.get(
+      )) as string[];
+      jumpState.keyDown = (await vars.globals.get(
         denops,
         "bs_motion_key_down",
         [],
-      ) as string[];
-      jumpState.keyUp = await vars.globals.get(
+      )) as string[];
+      jumpState.keyUp = (await vars.globals.get(
         denops,
         "bs_motion_key_up",
         [],
-      ) as string[];
-      jumpState.keyRight = await vars.globals.get(
+      )) as string[];
+      jumpState.keyRight = (await vars.globals.get(
         denops,
         "bs_motion_key_right",
         [],
-      ) as string[];
-      jumpState.keyExit = await vars.globals.get(
+      )) as string[];
+      jumpState.keyExit = (await vars.globals.get(
         denops,
         "bs_motion_key_exit",
         [],
-      ) as string[];
-      jumpState.keyExitTransparent = await vars.globals.get(
+      )) as string[];
+      jumpState.keyExitTransparent = (await vars.globals.get(
         denops,
         "bs_motion_key_exit_transparent",
         [],
-      ) as string[];
+      )) as string[];
 
-      // -- バッファローカルマッピング (JumpMode 用) を複数キー分設定
-      //    同じ操作を複数キーで呼び出せるようにする
-      const commands: string[] = [];
-      for (const key of jumpState.keyLeft) {
-        commands.push(
-          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['left'])<CR>`,
-        );
-      }
-      for (const key of jumpState.keyDown) {
-        commands.push(
-          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['down'])<CR>`,
-        );
-      }
-      for (const key of jumpState.keyUp) {
-        commands.push(
-          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['up'])<CR>`,
-        );
-      }
-      for (const key of jumpState.keyRight) {
-        commands.push(
-          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'jumpMove', ['right'])<CR>`,
-        );
-      }
-      for (const key of jumpState.keyExit) {
-        commands.push(
-          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpMode', [])<CR>`,
-        );
-      }
-      for (const key of jumpState.keyExitTransparent) {
-        commands.push(
-          `nnoremap <silent> <buffer> ${key} :call denops#request('bs-motion', 'leaveJumpModeTransparent', ['${key}'])<CR>`,
-        );
-      }
+      // ハイライトグループの設定（例：背景色を lightyellow にする）
+      await execute(denops, `
+        highlight BsMotionCursor ctermbg=lightyellow guibg=lightyellow
+      `);
+      // 現在位置のみのハイライトを適用
+      await updateCursorHighlight(denops);
 
-      // コマンドを一括実行
-      await execute(denops, commands.join("\n"));
+      // 入力ループ（ジャンプモードが有効な間、1文字ずつ受付）
+      while (jumpState.jumpMode) {
+        // getchar で1文字分の入力を取得
+        const charOrCode = await fn.getchar(denops);
+        // getchar は通常数値を返すので、文字コードから文字列に変換する
+        let input = "";
+        if (typeof charOrCode === "number") {
+          input = String.fromCharCode(charOrCode);
+        } else if (typeof charOrCode === "string") {
+          input = charOrCode;
+        }
+        const matched = getMatchedDirection(input, jumpState);
+
+        // 入力に応じて処理を分岐
+        if (
+          matched === "left" ||
+          matched === "down" ||
+          matched === "up" ||
+          matched === "right"
+        ) {
+          // timer_start を使わず、直接呼び出す
+          await denops.dispatcher.jumpMove(matched);
+        } else if (matched === "exit") {
+          await denops.dispatcher.leaveJumpMode();
+        } else if (matched === "exitTransparent") {
+          await denops.dispatcher.leaveJumpModeTransparent(input);
+        }
+        // 該当しないキーの場合は無視し、再度入力待ち
+      }
     },
 
     /**
-     * ジャンプモードを抜ける (ローカルマッピングを解除)
+     * ジャンプモードを抜ける (ハイライト解除、最終的なジャンプ位置に固定)
      */
     async leaveJumpMode(): Promise<void> {
       if (!jumpState.jumpMode) {
@@ -152,42 +208,30 @@ export const main: Entrypoint = (denops) => {
       }
       jumpState.jumpMode = false;
 
-      // nnoremap で設定したものを nunmap で全解除
-      await batch(denops, async (denops) => {
-        const commands: string[] = [];
-        for (const key of jumpState.keyLeft) {
-          commands.push(`nunmap <buffer> ${key}`);
-        }
-        for (const key of jumpState.keyDown) {
-          commands.push(`nunmap <buffer> ${key}`);
-        }
-        for (const key of jumpState.keyUp) {
-          commands.push(`nunmap <buffer> ${key}`);
-        }
-        for (const key of jumpState.keyRight) {
-          commands.push(`nunmap <buffer> ${key}`);
-        }
-        for (const key of jumpState.keyExit) {
-          commands.push(`nunmap <buffer> ${key}`);
-        }
-        await execute(denops, commands.join("\n"));
-      });
+      // ハイライト解除（cursorMatchId があれば）
+      if (jumpState.cursorMatchId !== null) {
+        await fn.matchdelete(denops, jumpState.cursorMatchId);
+        jumpState.cursorMatchId = null;
+      }
+
+      // 最終的なジャンプ位置にカーソルを移動
+      await fn.cursor(denops, jumpState.currentLine, jumpState.currentCol);
     },
 
+    /**
+     * ジャンプモードを抜け、入力されたキーを透過的に実行する
+     */
     async leaveJumpModeTransparent(key: unknown): Promise<void> {
       if (typeof key !== "string") {
         return;
       }
-      // ジャンプモードを抜ける
-      await this.leaveJumpMode();
-      // 押されたキーを透過的に実行
+      await denops.dispatcher.leaveJumpMode();
       await fn.execute(denops, `normal! ${key}`);
     },
 
     /**
      * ジャンプコマンド (up/down/left/right)
-     * ウィンドウの上端行～下端行、左端列～右端列の「範囲内」で
-     * 現在位置から半分移動していく。
+     * ウィンドウの境界範囲内で、現在位置から半分移動していく
      */
     async jumpMove(direction: unknown): Promise<void> {
       if (typeof direction !== "string") {
@@ -208,44 +252,34 @@ export const main: Entrypoint = (denops) => {
 
       switch (direction) {
         case "up": {
-          // ウィンドウの上端行 (topLine) ～ 現在行 の中間へ移動
           const newLine = Math.floor((topLine + currentLine) / 2);
-          // 下端を旧位置に更新
           bottomLine = currentLine;
           currentLine = newLine;
           break;
         }
         case "down": {
-          // ウィンドウの下端行 (bottomLine) ～ 現在行 の中間へ移動
           const newLine = Math.floor((bottomLine + currentLine) / 2);
-          // 上端を旧位置に更新
           topLine = currentLine;
           currentLine = newLine;
           break;
         }
         case "left": {
-          // ウィンドウの左端列 (leftCol) ～ 現在列 の中間へ移動
           const newCol = Math.floor((leftCol + currentCol) / 2);
-          // 右端を旧位置に更新
           rightCol = currentCol;
           currentCol = newCol;
           break;
         }
         case "right": {
-          // ウィンドウの右端列 (rightCol) ～ 現在列 の中間へ移動
           const newCol = Math.floor((rightCol + currentCol) / 2);
-          // 左端を旧位置に更新
           leftCol = currentCol;
           currentCol = newCol;
           break;
         }
-        default: {
-          // それ以外は無視
+        default:
           return;
-        }
       }
 
-      // 範囲外に出そうになった場合の安全策
+      // 範囲外にならないように調整
       if (currentLine < topLine) {
         currentLine = topLine;
       } else if (currentLine > bottomLine) {
@@ -268,11 +302,14 @@ export const main: Entrypoint = (denops) => {
       jumpState.leftCol = leftCol;
       jumpState.rightCol = rightCol;
 
-      // 1行/1列の範囲になったらジャンプモードを抜ける
+      // カーソル位置のハイライト更新
+      await updateCursorHighlight(denops);
+
+      // 範囲が1行/1列の場合は終了
       const lineRange = bottomLine - topLine;
       const colRange = rightCol - leftCol;
       if (lineRange <= 1 || colRange <= 1) {
-        await this.leaveJumpMode();
+        await denops.dispatcher.leaveJumpMode();
       }
     },
   };
