@@ -2,7 +2,7 @@ import type { Entrypoint } from "jsr:@denops/std@^7.0.0";
 import { execute } from "jsr:@denops/std@^7.0.0/helper/execute";
 import { batch } from "jsr:@denops/std@^7.0.0/batch";
 import * as fn from "jsr:@denops/std@^7.0.0/function";
-import * as vars from "jsr:@denops/std/variable";
+import * as vars from "jsr:@denops/std@^7.0.0/variable";
 
 /**
  * ジャンプ時の上下左右の境界や現在位置、マッピングキーを管理
