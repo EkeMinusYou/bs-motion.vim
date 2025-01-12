@@ -113,9 +113,8 @@ export const main: Entrypoint = (denops) => {
       jumpState.bottomLine = await fn.line(denops, "w$");
 
       // ウィンドウ幅 (カラム数) を取得
-      const winWidth = await fn.winwidth(denops, 0);
       jumpState.leftCol = 1;
-      jumpState.rightCol = winWidth > 0 ? winWidth : 1;
+      jumpState.rightCol = await fn.winwidth(denops, 0) || 1;
 
       // ユーザ設定のキー取得
       jumpState.keyLeft = (await vars.globals.get(denops, "bs_motion_key_left", [])) as string[];
