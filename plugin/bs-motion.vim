@@ -21,9 +21,9 @@ let g:loaded_bs_motion = 1
 
 " Function called once the plugin is loaded
 function! s:init() abort
-  command! -buffer BSMotionJumpEnter  call denops#request('bs-motion', 'enterJumpMode', [])
-  command! -buffer BSMotionJumpLeave  call denops#request('bs-motion', 'leaveJumpMode', [])
-  command! -buffer -nargs=1 BSMotionJumpMove call denops#request('bs-motion', 'jumpMove', [<f-args>])
+  command! BSMotionJumpEnter  call denops#request('bs-motion', 'enterJumpMode', [])
+  command! BSMotionJumpLeave  call denops#request('bs-motion', 'leaveJumpMode', [])
+  command! -nargs=1 BSMotionJumpMove call denops#request('bs-motion', 'jumpMove', [<f-args>])
 endfunction
 
 augroup bs_motion
